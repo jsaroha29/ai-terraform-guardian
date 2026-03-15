@@ -1,0 +1,53 @@
+name: Nightly Terraform Maintenance (AI Auto-PR)
+
+on:
+  schedule:
+    - cron: "0 3 * * 1-5"  # weekdays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform fmt (apply)
+        working-directory: infra
+        run: terraform fmt -recursive
+
+      - name: Terraform init + validate
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform validate
+
+      - name: Generate terraform-docs
+        uses: terraform-docs/gh-actions@v1.3.0
+        with:
+          working-dir: infra
+          output-file: README.md
+          output-method: inject
+          git-push: "false"
+
+      - name: Run AI agent skill (pluggable)
+        run: bash scripts/agent_skill.sh
+
+      - name: Create Pull Request (if changes)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "chore(terraform): nightly maintenance (fmt/docs/quality)"
+          body-path: PR_BODY.md
+          branch: "ai/nightly-maintenance-${{ github.run_id }}"
+          commit-message: "chore(terraform): nightly maintenance updates"
+          labels: "automation,terraform,ai"
